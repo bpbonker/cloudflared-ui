@@ -2,13 +2,15 @@
 
 A UI-first web app for setting up and managing **Cloudflare Tunnels** that expose a [CloudPanel](https://www.cloudpanel.io/) server — or any internal service — sitting behind NAT. No CLI knowledge required. Install once, open a browser, and walk through the setup wizard.
 
-- 🚀 First-run wizard installs and starts the tunnel for you
-- 📱 Mobile-first responsive UI (works great on phones and tablets)
-- 🔐 JWT-based admin login
-- 🌐 Add, edit, delete subdomains from the UI — DNS records auto-created in Cloudflare
-- 🔒 One-click "Origin uses HTTPS" mode for CloudPanel's self-signed cert
-- 📜 Live log streaming via `journalctl -u cloudflared`
-- 🧪 20+ Playwright tests, desktop + mobile viewports
+- First-run wizard installs and starts the tunnel for you
+- Mobile-first responsive UI (works on phones and tablets)
+- JWT-based admin login with per-IP rate limiting, audit log, and a default-password write-block
+- Add, edit, delete subdomains from the UI; DNS records auto-created in Cloudflare
+- One-click "Origin uses HTTPS" mode for CloudPanel's self-signed cert
+- Live log streaming via `journalctl -u cloudflared`
+- Single-file backup + restore so a wipe is never permanent
+- Safe in-place upgrade script that never touches your data
+- 25+ Playwright tests, desktop + mobile viewports
 
 ![Dashboard](docs/screenshots/dashboard.png)
 

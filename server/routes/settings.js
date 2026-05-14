@@ -51,8 +51,18 @@ router.put('/password', async (req, res) => {
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ message: 'Both current and new passwords are required.' });
   }
-  if (newPassword.length < 8) {
-    return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+  // 12 chars minimum + at least one letter and one digit. We deliberately
+  // don't require special characters — research shows length matters more
+  // than character-class entropy and forced specials nudge users toward
+  // predictable suffixes (`!`, `1`).
+  if (newPassword.length < 12) {
+    return res.status(400).json({ message: 'New password must be at least 12 characters.' });
+  }
+  if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+    return res.status(400).json({ message: 'New password must include at least one letter and one digit.' });
+  }
+  if (newPassword === currentPassword) {
+    return res.status(400).json({ message: 'New password must be different from the current one.' });
   }
   const auth = await store.get('auth');
   let valid;

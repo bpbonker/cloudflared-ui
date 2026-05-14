@@ -25,7 +25,7 @@ async function login(page) {
 
 // Reset state before the wizard test so it can re-run across projects.
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/setup/_reset');
+  await request.post('/api/setup/_reset', { headers: { 'X-Cfui-Mock-Reset': 'yes' } });
 });
 
 test('setup wizard end-to-end (mock)', async ({ page }) => {

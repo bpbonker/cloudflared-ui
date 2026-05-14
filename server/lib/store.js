@@ -62,4 +62,10 @@ function loadSync() {
   return cache;
 }
 
-module.exports = { load, save, get, set, loadSync };
+// Drop the in-memory cache. Used by the restore route after writing a new
+// state.json directly to disk so the next read picks up the fresh blob.
+function invalidate() {
+  cache = null;
+}
+
+module.exports = { load, save, get, set, loadSync, invalidate };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Github, AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
+import { Github, AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, Download, Upload, ShieldCheck } from 'lucide-react';
+import { useRef } from 'react';
 import { api, auth } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import Spinner, { FullPageSpinner } from '../components/Spinner.jsx';
@@ -18,6 +19,9 @@ export default function Settings() {
   const [testResult, setTestResult] = useState(null);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const fileRef = useRef(null);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -90,6 +94,60 @@ export default function Settings() {
       toast.success('Tunnel deleted.');
       navigate('/setup', { replace: true });
     } catch (err) { toast.error(err.message); }
+  }
+
+  async function downloadBackup() {
+    try {
+      // We fetch through `fetch` (not the api helper) so we can hand the raw
+      // blob to the browser's download machinery without parsing it first.
+      const res = await fetch('/api/backup', { headers: { Authorization: `Bearer ${auth.token}` } });
+      if (!res.ok) throw new Error(`Backup failed (${res.status})`);
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const fname = /filename="([^"]+)"/.exec(cd)?.[1] || `cloudflared-ui-backup-${Date.now()}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Backup downloaded. Treat it as a secret — it contains your API token and password hash.');
+    } catch (err) { toast.error(err.message); }
+  }
+
+  function pickRestoreFile() { fileRef.current?.click(); }
+
+  async function onRestoreFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (parsed?.meta?.kind !== 'cloudflared-ui-backup') {
+        throw new Error('That file isn\'t a cloudflared-ui backup.');
+      }
+      setConfirmRestore({ payload: parsed, filename: file.name });
+    } catch (err) {
+      toast.error(`Couldn't read backup file: ${err.message}`);
+    }
+  }
+
+  async function doRestore() {
+    const { payload } = confirmRestore;
+    setConfirmRestore(null);
+    setRestoring(true);
+    try {
+      const r = await api.post('/api/backup', payload);
+      if (r.restartedTunnel === false) {
+        toast.warn(`Restored, but cloudflared restart failed: ${r.restartMessage}`);
+      } else {
+        toast.success('Restore complete. Reloading.');
+      }
+      setTimeout(() => window.location.reload(), 800);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRestoring(false);
+    }
   }
 
   if (!s) return <FullPageSpinner />;
@@ -204,6 +262,30 @@ export default function Settings() {
         </a>
       </section>
 
+      <section className="card space-y-4">
+        <header>
+          <h2 className="font-semibold flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-600"/> Backup & restore</h2>
+          <p className="text-sm text-ink-500">
+            Download a single file containing your full configuration — Cloudflare token, tunnel id, credentials, ingress rules,
+            admin password hash. Restore moves you to a different machine in seconds, or rolls back a bad change.
+          </p>
+        </header>
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex items-start gap-2">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5"/>
+          <span>
+            <b>The backup file contains secrets</b> — your Cloudflare API token, tunnel credentials and admin password hash.
+            Store it somewhere private (a password manager, an encrypted vault, your own secrets repo). Don't email it.
+          </span>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button onClick={downloadBackup} className="btn-primary"><Download size={16}/> Download backup</button>
+          <button onClick={pickRestoreFile} disabled={restoring} className="btn-secondary">
+            {restoring ? <Spinner size={16}/> : <Upload size={16}/>} Restore from file…
+          </button>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onRestoreFile}/>
+        </div>
+      </section>
+
       <section className="card border-red-200">
         <h2 className="font-semibold text-red-700 mb-1 flex items-center gap-2"><AlertTriangle size={16}/> Danger zone</h2>
         <p className="text-sm text-ink-600 mb-4">These actions can take your subdomains offline. Be careful.</p>
@@ -220,6 +302,33 @@ export default function Settings() {
         </>}
       >
         <p className="text-sm text-ink-700">This stops the systemd service and unregisters cloudflared from boot. Your tunnel config is kept; you can reinstall later from this app.</p>
+      </Modal>
+
+      <Modal
+        open={!!confirmRestore}
+        onClose={() => setConfirmRestore(null)}
+        title="Restore from backup?"
+        footer={<>
+          <button onClick={() => setConfirmRestore(null)} className="btn-ghost">Cancel</button>
+          <button onClick={doRestore} className="btn-primary">Restore</button>
+        </>}
+      >
+        <div className="space-y-3 text-sm">
+          <p>
+            Replace this server's current configuration with the contents of <b className="font-mono">{confirmRestore?.filename}</b>?
+          </p>
+          {confirmRestore && (
+            <ul className="text-xs text-ink-600 space-y-1 bg-ink-50 rounded-lg p-3">
+              <li>Created: <span className="font-mono">{confirmRestore.payload.meta.createdAt}</span></li>
+              <li>From host: <span className="font-mono">{confirmRestore.payload.meta.hostname}</span></li>
+              <li>App version: <span className="font-mono">{confirmRestore.payload.meta.appVersion}</span></li>
+              <li>Tunnel ID: <span className="font-mono">{confirmRestore.payload.meta.tunnelId || '(none)'}</span></li>
+            </ul>
+          )}
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+            The current state, config and credentials on this server will be overwritten. cloudflared will be restarted with the restored rules.
+          </p>
+        </div>
       </Modal>
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Delete tunnel?"

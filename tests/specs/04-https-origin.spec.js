@@ -14,7 +14,7 @@ async function login(page) {
 }
 
 test.beforeEach(async ({ request }) => {
-  await request.post('/api/setup/_reset');
+  await request.post('/api/setup/_reset', { headers: { 'X-Cfui-Mock-Reset': 'yes' } });
 });
 
 test('HTTPS-origin toggle round-trips through the API', async ({ page, request }) => {

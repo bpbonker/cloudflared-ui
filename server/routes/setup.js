@@ -24,14 +24,22 @@ const CONFIG_DIR = process.env.CLOUDFLARED_CONFIG_DIR || '/etc/cloudflared';
 const MOCK = process.env.MOCK_MODE === 'true';
 
 // Test-only: wipe local state so the wizard can be re-run. Guarded by
-// MOCK_MODE so it can't be hit in production.
-router.post('/_reset', async (_req, res) => {
+// MOCK_MODE *and* by a deliberate header so accidentally flipping
+// MOCK_MODE on a real host can't destroy a real configuration. The
+// Playwright suite sends both.
+router.post('/_reset', async (req, res) => {
   if (!MOCK) return res.status(403).json({ message: 'Only available in mock mode.' });
+  if (req.get('X-Cfui-Mock-Reset') !== 'yes') {
+    return res.status(403).json({
+      message: 'Refusing to reset. Send X-Cfui-Mock-Reset: yes to confirm. This endpoint exists only for the test harness.',
+    });
+  }
   const fsModule = require('node:fs/promises');
   const cfgPath = cfg.effectivePath();
   await store.set('cloudflare', { apiToken: '', accountId: '' });
   await store.set('tunnel', { id: '', name: '' });
   await store.set('target', { host: 'localhost', port: 80 });
+  await store.set('auth', { passwordHash: '' }); // so tests can log in with .env default
   try { await fsModule.unlink(cfgPath); } catch {}
   res.json({ ok: true });
 });

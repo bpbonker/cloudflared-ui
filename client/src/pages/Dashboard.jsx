@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Play, Square, RefreshCw, Globe, Clock, AlertTriangle, Plus, KeyRound } from 'lucide-react';
+import { Play, Square, RefreshCw, Globe, Clock, AlertTriangle, Plus, KeyRound, ShieldCheck, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -78,6 +78,30 @@ export default function Dashboard() {
             <span className="text-sm">You're signed in with the default password. Anyone on the LAN can guess it — change it now.</span>
           </div>
           <Link to="/settings" className="btn-primary">Change password</Link>
+        </div>
+      )}
+
+      {/* When an ingress rule routes to the management port (8088), the UI
+          is reachable from anywhere — make sure the operator knows to
+          gate that hostname with Cloudflare Access. */}
+      {ingress.some((r) => /:(8088)\b/.test(r.service)) && (
+        <div className="card border-amber-200 bg-amber-50 text-amber-900 flex items-start gap-3">
+          <ShieldCheck className="text-amber-600 shrink-0 mt-0.5"/>
+          <div className="text-sm flex-1">
+            <div className="font-semibold mb-1">This admin UI is exposed via a tunnel.</div>
+            <p>
+              Anyone on the internet can reach the login page. Put Cloudflare Access in front of the hostname so only your
+              Cloudflare-authenticated identity can hit it. It's free for personal use.
+            </p>
+            <a
+              href="https://one.dash.cloudflare.com/?to=/:account/access/apps"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-2 text-amber-900 font-medium hover:underline"
+            >
+              Set up Cloudflare Access <ExternalLink size={12}/>
+            </a>
+          </div>
         </div>
       )}
 
