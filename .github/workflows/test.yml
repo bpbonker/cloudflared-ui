@@ -1,0 +1,57 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --omit=optional --no-audit --no-fund
+      - run: npm --prefix client install --no-audit --no-fund
+      - run: npm --prefix client run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --omit=optional --no-audit --no-fund
+      - run: npm --prefix client install --no-audit --no-fund
+      - run: npm --prefix client run build
+      - name: Start app in mock mode
+        run: |
+          cat > .env <<'EOF'
+          PORT=8088
+          JWT_SECRET=ci-only-secret
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD=changeme
+          CLOUDFLARED_CONFIG_DIR=/tmp/cloudflared
+          CLOUDFLARED_BIN=cloudflared
+          MOCK_MODE=true
+          EOF
+          mkdir -p /tmp/cloudflared
+          node server/index.js &
+          # Wait for the server to start accepting connections.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8088/api/setup/status >/dev/null; then break; fi
+            sleep 1
+          done
+      - run: npm --prefix tests install --no-audit --no-fund
+      - run: npx --prefix tests playwright install --with-deps chromium
+      - run: E2E_BASE_URL=http://localhost:8088 npm --prefix tests test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/report/

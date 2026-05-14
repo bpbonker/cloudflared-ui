@@ -1,0 +1,37 @@
+{
+  "name": "cloudflared-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UI-first manager for Cloudflare Tunnels exposing CloudPanel (or any internal server) behind NAT.",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "git+https://github.com/bpbonker/cloudflared-ui.git" },
+  "bugs":       { "url": "https://github.com/bpbonker/cloudflared-ui/issues" },
+  "homepage":   "https://github.com/bpbonker/cloudflared-ui#readme",
+  "keywords": ["cloudflare", "cloudflared", "tunnel", "cloudpanel", "reverse-proxy"],
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install",
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "nodemon server/index.js",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "node server/index.js",
+    "postinstall": "echo \"Run 'npm run install:all' once to install client deps, then 'npm run build' to build, then 'npm start' to launch.\""
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "js-yaml": "^4.1.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
