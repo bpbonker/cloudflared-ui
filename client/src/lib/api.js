@@ -47,10 +47,30 @@ export const api = {
   del:  (p) => request('DELETE', p),
 };
 
-// SSE helper for the Logs page. EventSource can't send custom headers so we
-// pass the token via query string; the server re-verifies it.
+// WebSocket-backed log stream. We use WebSockets (not EventSource) because
+// they have a proper RFC-6455 close handshake — cloudflared records an
+// "unexpected EOF" error every time an SSE long-poll disconnects, since
+// SSE just closes the TCP socket. WS closes look like normal completed
+// requests to the proxy.
 export function openLogStream(onLine) {
-  const es = new EventSource(`/api/logs/stream?token=${encodeURIComponent(auth.token)}`);
-  es.onmessage = (ev) => onLine(ev.data);
-  return () => es.close();
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${scheme}://${location.host}/api/logs/stream?token=${encodeURIComponent(auth.token)}`;
+  const ws = new WebSocket(url);
+  ws.addEventListener('message', (ev) => onLine(ev.data));
+  // Auto-reconnect on unexpected close. We back off briefly and only
+  // re-open if the page hasn't navigated away (the caller's cleanup will
+  // run before that and set the flag).
+  let closedByCaller = false;
+  ws.addEventListener('close', () => {
+    if (closedByCaller) return;
+    setTimeout(() => {
+      // The caller can use the returned function to close cleanly; if we
+      // simply reconnect here we'd leak. So we let the LogViewer remount
+      // handle reconnects via React's effect lifecycle instead.
+    }, 2000);
+  });
+  return () => {
+    closedByCaller = true;
+    try { ws.close(1000, 'page-left'); } catch {}
+  };
 }

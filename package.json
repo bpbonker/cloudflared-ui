@@ -1,13 +1,24 @@
 {
   "name": "cloudflared-ui",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "UI-first manager for Cloudflare Tunnels exposing CloudPanel (or any internal server) behind NAT.",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "git+https://github.com/bpbonker/cloudflared-ui.git" },
-  "bugs":       { "url": "https://github.com/bpbonker/cloudflared-ui/issues" },
-  "homepage":   "https://github.com/bpbonker/cloudflared-ui#readme",
-  "keywords": ["cloudflare", "cloudflared", "tunnel", "cloudpanel", "reverse-proxy"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bpbonker/cloudflared-ui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bpbonker/cloudflared-ui/issues"
+  },
+  "homepage": "https://github.com/bpbonker/cloudflared-ui#readme",
+  "keywords": [
+    "cloudflare",
+    "cloudflared",
+    "tunnel",
+    "cloudpanel",
+    "reverse-proxy"
+  ],
   "scripts": {
     "install:all": "npm install && npm --prefix client install",
     "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
@@ -26,7 +37,8 @@
     "express-rate-limit": "^7.4.0",
     "helmet": "^8.0.0",
     "js-yaml": "^4.1.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "concurrently": "^9.0.1",

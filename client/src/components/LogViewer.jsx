@@ -3,31 +3,11 @@ import { Search, Pause, Play, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { openLogStream, api } from '../lib/api';
 
-// Tag a line based on cloudflared/systemd markers. Several "ERR" lines are
-// actually expected behaviour (a startup warning about a cert.pem we don't
-// need, disconnects from the Logs page SSE stream, etc.) — we down-classify
-// those to "info" so the colour scheme reflects what the operator actually
-// cares about rather than the literal log level.
-const BENIGN_PATTERNS = [
-  // cloudflared looks for cert.pem from interactive `cloudflared login`.
-  // We create tunnels via the Cloudflare API instead, so this never exists
-  // and isn't needed.
-  /Cannot determine default origin certificate path/i,
-  // SSE log-stream disconnects when the user navigates away from the Logs
-  // page. The error is "Request failed error=\"unexpected EOF\" ... /api/logs/stream".
-  /Request failed.*unexpected EOF.*\/api\/logs\/stream/i,
-  /error="unexpected EOF".*ingressRule.*\/api\/logs\/stream/i,
-  // Cloudflared reports each tunnel connection teardown (e.g. during a
-  // service restart or planned config reload). Not an outage.
-  /Serve tunnel error.*error="(context canceled|Application error 0x0)/i,
-  /control stream encountered a failure/i,
-  /failed to run the datagram handler.*context canceled/i,
-];
-
+// Tag a line based on cloudflared/systemd markers. The check order matters
+// because journalctl lines often contain the literal word "info" in URLs —
+// we anchor on the cloudflared level markers first.
 function classify(line) {
-  const isErrLevel = /\bERR\b|level=error|\bERROR\b/.test(line);
-  if (isErrLevel && BENIGN_PATTERNS.some((re) => re.test(line))) return 'info';
-  if (isErrLevel) return 'err';
+  if (/\bERR\b|level=error|\bERROR\b/.test(line)) return 'err';
   if (/\bWRN\b|level=warn|\bWARN\b/.test(line)) return 'warn';
   if (/\bINF\b|level=info|\bINFO\b/.test(line)) return 'info';
   return 'plain';

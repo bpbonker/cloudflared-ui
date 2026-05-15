@@ -1,12 +1,17 @@
-// /api/logs returns the last N lines via `journalctl -u cloudflared -n N --no-pager`.
-// /api/logs/stream opens an SSE channel and pipes journalctl -f line-by-line.
+// Log endpoints.
 //
-// We classify each line client-side based on common cloudflared/journald
-// markers (INF/WRN/ERR, level=info/warn/error). The server just streams the
-// raw text — keeping the parser in the browser makes the colour scheme
-// trivial to tweak without redeploying.
+// `GET /api/logs` — one-shot read of the last N journalctl lines. Used by
+// the Logs page to backfill history before the live stream attaches.
+//
+// `WS /api/logs/stream` — long-lived WebSocket that streams every new line
+// from `journalctl -u cloudflared -f`. WebSocket (instead of SSE) is
+// deliberate: it has an RFC-6455 close handshake which cloudflared treats
+// as a graceful close. SSE here used to produce one "unexpected EOF" entry
+// in the cloudflared log for every Logs-page open/close cycle because the
+// TCP socket dropped mid-stream. WebSockets close cleanly.
 
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const shell = require('../lib/shell');
 const { requireAuth } = require('../middleware/auth');
 
@@ -21,49 +26,64 @@ router.get('/', requireAuth, async (req, res) => {
   res.json({ lines: stdout.split('\n') });
 });
 
-// SSE accepts the JWT via `?token=` because EventSource can't set headers.
-// We re-verify it here instead of going through requireAuth.
-const jwt = require('jsonwebtoken');
-router.get('/stream', (req, res) => {
-  const token = req.query.token;
-  try {
-    jwt.verify(token, process.env.JWT_SECRET || 'dev-only-secret-change-me');
-  } catch {
-    return res.status(401).end();
-  }
-
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  res.flushHeaders();
-
-  const child = shell.streamCommand('journalctl', ['-u', 'cloudflared', '-f', '-n', '50', '--no-pager']);
-  let buffer = '';
-
-  const onData = (chunk) => {
-    buffer += chunk.toString();
-    let idx;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 1);
-      if (line.trim()) res.write(`data: ${line}\n\n`);
-    }
-  };
-  child.stdout.on('data', onData);
-  child.stderr.on('data', onData);
-
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
-
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    child.kill();
-    // Send an explicit HTTP terminator before the socket goes away so the
-    // upstream proxy (cloudflared) sees a clean close instead of EOF.
-    try { res.end(); } catch {}
-  });
-});
-
 module.exports = router;
+
+// --- WebSocket handler ---
+// The HTTP server in index.js attaches the WebSocket upgrade handler via
+// `attachLogStream(server)`. We keep that wiring next to the route module
+// so all log-related code lives in one place.
+const { WebSocketServer } = require('ws');
+
+function attachLogStream(httpServer) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  httpServer.on('upgrade', (request, socket, head) => {
+    const url = new URL(request.url, 'http://x');
+    if (url.pathname !== '/api/logs/stream') return; // not for us; let other handlers try
+
+    // Authenticate via ?token=... before completing the upgrade. WebSocket
+    // browser API can't set custom headers, so we accept the JWT in the
+    // query string and verify it here.
+    const token = url.searchParams.get('token');
+    try {
+      jwt.verify(token, process.env.JWT_SECRET || (process.env.MOCK_MODE === 'true' ? 'mock-mode-only-secret' : ''));
+    } catch {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      const child = shell.streamCommand('journalctl', ['-u', 'cloudflared', '-f', '-n', '50', '--no-pager']);
+      let buffer = '';
+
+      function onChunk(chunk) {
+        if (ws.readyState !== ws.OPEN) return;
+        buffer += chunk.toString();
+        let i;
+        while ((i = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, i);
+          buffer = buffer.slice(i + 1);
+          if (line.trim()) ws.send(line);
+        }
+      }
+      child.stdout.on('data', onChunk);
+      child.stderr.on('data', onChunk);
+
+      // Application-level ping to keep idle proxies from killing the
+      // connection (Cloudflare's tunnel times out at ~100s of inactivity).
+      const ping = setInterval(() => {
+        if (ws.readyState === ws.OPEN) ws.ping();
+      }, 30_000);
+
+      const cleanup = () => {
+        clearInterval(ping);
+        child.kill();
+      };
+      ws.on('close', cleanup);
+      ws.on('error', cleanup);
+    });
+  });
+}
+
+module.exports.attachLogStream = attachLogStream;

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+- **Log streaming no longer spams cloudflared with EOF errors.** The Logs
+  page used SSE (EventSource), which has no close handshake — every time
+  you closed the page cloudflared logged the disconnect as
+  `error="unexpected EOF" ... /api/logs/stream`. Replaced with WebSocket,
+  which has an RFC-6455 close frame that cloudflared treats as a clean
+  end-of-connection.
+- ICMP for cloudflared health probes is now enabled at install time via
+  `/etc/sysctl.d/99-cloudflared.conf` (`net.ipv4.ping_group_range = 0
+  2147483647`). Eliminates the `Group ID 0 is not between ping group 1
+  to 0` warning at every cloudflared startup.
+- `cfui` is added to `systemd-journal` and `adm` groups so the Logs page
+  can read journalctl without sudo.
+
 ## 1.2.0 — auth hardening
 
 Aimed at hosts that expose this app publicly through a tunnel.

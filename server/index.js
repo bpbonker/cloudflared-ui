@@ -75,8 +75,17 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
+// We build the HTTP server explicitly (rather than letting express.listen()
+// create one) so we can attach the WebSocket upgrade handler used by the
+// Logs page live stream.
+const http = require('node:http');
+const server = http.createServer(app);
+
+const { attachLogStream } = require('./routes/logs');
+attachLogStream(server);
+
 const port = process.env.PORT || 8088;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`cloudflared-ui listening on http://0.0.0.0:${port}`);
   if (process.env.MOCK_MODE === 'true') console.log('[mock mode] shell calls are faked');
 });
