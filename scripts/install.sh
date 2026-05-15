@@ -60,6 +60,12 @@ if ! id "$APP_USER" >/dev/null 2>&1; then
   $SUDO useradd -r -m -s /bin/bash -d "$APP_DIR" "$APP_USER"
 fi
 
+# The Logs page reads journalctl without sudo. systemd-journal is the
+# right group for read-only journal access; adm gets us /var/log/syslog
+# too for free. Add idempotently.
+step "Granting $APP_USER read access to systemd journal"
+$SUDO usermod -a -G systemd-journal,adm "$APP_USER"
+
 step "Cloning $REPO into $APP_DIR"
 $SUDO mkdir -p "$APP_DIR" /etc/cloudflared
 if [ ! -d "$APP_DIR/.git" ]; then
