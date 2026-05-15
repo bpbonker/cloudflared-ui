@@ -60,6 +60,9 @@ router.get('/stream', (req, res) => {
   req.on('close', () => {
     clearInterval(heartbeat);
     child.kill();
+    // Send an explicit HTTP terminator before the socket goes away so the
+    // upstream proxy (cloudflared) sees a clean close instead of EOF.
+    try { res.end(); } catch {}
   });
 });
 

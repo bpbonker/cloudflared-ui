@@ -43,6 +43,15 @@ if ! command -v node >/dev/null || [ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20
 fi
 info "node $(node -v) / npm $(npm -v)"
 
+# cloudflared needs ICMP for tunnel health probes. The default ping_group_range
+# of "1 0" is an empty range (i.e. ICMP disabled for everyone). Widen it once
+# and persist the setting so reboots don't re-break it.
+if ! grep -q '^net.ipv4.ping_group_range = 0 2147483647' /etc/sysctl.d/99-cloudflared.conf 2>/dev/null; then
+  step "Enabling ICMP for cloudflared"
+  echo 'net.ipv4.ping_group_range = 0 2147483647' | $SUDO tee /etc/sysctl.d/99-cloudflared.conf >/dev/null
+  $SUDO sysctl -p /etc/sysctl.d/99-cloudflared.conf >/dev/null
+fi
+
 if ! command -v cloudflared >/dev/null; then
   step "Installing cloudflared"
   $SUDO mkdir -p --mode=0755 /usr/share/keyrings
